@@ -6,9 +6,14 @@ CORS(app)
 
 @app.route('/api/', methods=['POST'])
 def api():
-    data = request.get_json()
+    data = request.get_json() or {}
     question = data.get('question', '')
-    return jsonify({"answer": "This is a placeholder answer."})
+
+    # Always return both answer and links
+    return jsonify({
+        "answer": f"You asked: {question}",
+        "links": []      # empty list if you have no links to share
+    })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000)

@@ -8,7 +8,7 @@ app = Flask(__name__)
 def home():
     return 'TDS Virtual TA is running!'
 
-@app.route('/api/', methods=['POST'])
+@app.route('/api/', methods=['GET', 'POST'])
 def api():
     try:
         data = request.get_json()

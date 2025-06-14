@@ -12,6 +12,6 @@ def answer_question(question):
     top_results = results[:3] if results else ["Sorry, I couldn't find an exact answer. Try rephrasing your question."]
     
     # Dummy example links (you can improve later)
-    links = [{"url": "https://tds.s-anand.net/#/2025-01/", "text": "Course page"}]
+    links = [{"url": "https://tds.s-anand.net/#/", "text": "Course page"}]
 
     return '\n'.join(top_results), links

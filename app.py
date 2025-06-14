@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from utils import answer_question    # bring in your Q&A logic
 
 app = Flask(__name__)
 CORS(app)
@@ -9,10 +10,15 @@ def api():
     data = request.get_json() or {}
     question = data.get('question', '')
 
-    # Always return both answer and links
+    if not question:
+        return jsonify({"error": "Question is required", "links": []}), 400
+
+    # this returns (answer_text, links_list)
+    answer, links = answer_question(question)
+
     return jsonify({
-        "answer": f"You asked: {question}",
-        "links": []      # empty list if you have no links to share
+        "answer": answer,
+        "links": links
     })
 
 if __name__ == '__main__':

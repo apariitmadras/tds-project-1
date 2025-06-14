@@ -5,40 +5,36 @@ import os
 import openai
 
 app = Flask(__name__)
-CORS(app)  # ✅ Enables CORS for all routes
+CORS(app)  # Enables CORS for frontend/browser access
 
 # Load context.json
 with open("context.json", "r") as f:
     context_data = json.load(f)
 context_text = "\n\n".join([item["text"] for item in context_data])
 
-# OpenAI client setup
+# Set OpenAI API key
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route('/')
 def home():
     return "TDS Virtual TA API is live."
 
-@app.route('/api/', methods=['POST', 'OPTIONS'])  # ✅ Accept OPTIONS preflight
+@app.route('/api/', methods=['POST'])
 def api():
-    if request.method == 'OPTIONS':
-        return '', 204  # ✅ Handle preflight requests
-
     try:
         data = request.get_json()
         question = data.get("question", "")
-        image_b64 = data.get("image", None)  # Optional: if images are included
-
         if not question:
             return jsonify({"error": "No question provided"}), 400
 
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful TA for IITM's TDS course. Use only the context below."},
+                {"role": "system", "content": "You are a helpful TA for IITM's TDS course. Answer only using the context."},
                 {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{question}"}
             ]
         )
+
         answer = response.choices[0].message.content.strip()
 
         return jsonify({

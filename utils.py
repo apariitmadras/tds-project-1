@@ -26,6 +26,6 @@ def answer_question(question):
         answer = "Here are some relevant excerpts:\n" + "\n".join(matches)
 
     links = [
-        {"text": "Course page", "url": "https://tds.s-anand.net/#/2025-01/"}
+        {"text": "Course page", "url": "https://tds.s-anand.net/#/"}
     ]
     return answer, links

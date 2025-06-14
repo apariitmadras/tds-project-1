@@ -1,17 +1,17 @@
-def answer_question(question, image_path=None):
-    # For now, just dummy logic. We'll improve it later.
-    if "gpt" in question.lower():
-        return (
-            "You must use `gpt-3.5-turbo-0125`, even if AI Proxy supports `gpt-4o-mini`.",
-            [
-                {
-                    "url": "https://discourse.onlinedegree.iitm.ac.in/t/ga5-question-8-clarification/155939/4",
-                    "text": "Use the model mentioned in the question."
-                },
-                {
-                    "url": "https://discourse.onlinedegree.iitm.ac.in/t/ga5-question-8-clarification/155939/3",
-                    "text": "Use a tokenizer to get number of tokens."
-                }
-            ]
-        )
-    return ("I'm not sure how to answer that yet.", [])
+def load_content():
+    with open('tds_clean.txt', 'r', encoding='utf-8') as f:
+        return f.read()
+
+course_text = load_content()
+
+def answer_question(question):
+    # Naive search — find 3 most relevant lines
+    lines = course_text.split('\n')
+    results = [line for line in lines if question.lower() in line.lower()]
+
+    top_results = results[:3] if results else ["Sorry, I couldn't find an exact answer. Try rephrasing your question."]
+    
+    # Dummy example links (you can improve later)
+    links = [{"url": "https://tds.s-anand.net/#/2025-01/", "text": "Course page"}]
+
+    return '\n'.join(top_results), links

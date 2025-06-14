@@ -1,42 +1,56 @@
-import openai, os, json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import json
+import os
+import openai
 
 app = Flask(__name__)
-CORS(app)
+CORS(app)  # ✅ Enables CORS for all routes
 
+# Load context.json
+with open("context.json", "r") as f:
+    context_data = json.load(f)
+context_text = "\n\n".join([item["text"] for item in context_data])
+
+# OpenAI client setup
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-with open("context.json") as f:
-    context_text = "\n\n".join([item["text"] for item in json.load(f)])
 
 @app.route('/')
 def home():
     return "TDS Virtual TA API is live."
 
-@app.route('/api/', methods=['POST'])
+@app.route('/api/', methods=['POST', 'OPTIONS'])  # ✅ Accept OPTIONS preflight
 def api():
-    data = request.get_json()
-    question = data.get("question", "")
-    if not question:
-        return jsonify({"error": "No question provided"}), 400
+    if request.method == 'OPTIONS':
+        return '', 204  # ✅ Handle preflight requests
 
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a helpful TA for IITM TDS. Answer only using the context."},
-            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{question}"}
-        ]
-    )
-    answer = response.choices[0].message.content.strip()
+    try:
+        data = request.get_json()
+        question = data.get("question", "")
+        image_b64 = data.get("image", None)  # Optional: if images are included
 
-    return jsonify({
-        "answer": answer,
-        "links": [
-            {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
-            {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
-        ]
-    })
+        if not question:
+            return jsonify({"error": "No question provided"}), 400
+
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful TA for IITM's TDS course. Use only the context below."},
+                {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{question}"}
+            ]
+        )
+        answer = response.choices[0].message.content.strip()
+
+        return jsonify({
+            "answer": answer,
+            "links": [
+                {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
+                {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
+            ]
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=3000)

@@ -7,12 +7,12 @@ import json
 app = Flask(__name__)
 CORS(app)
 
-# Load context JSON once at startup
+# Load context.json once
 with open("context.json", "r") as f:
     context_data = json.load(f)
 context_text = "\n\n".join([item["text"] for item in context_data])
 
-# Initialize OpenAI client (ensure OPENAI_API_KEY is set in env)
+# Initialize OpenAI client using your environment variable
 client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/")
@@ -25,48 +25,55 @@ def api():
     if request.method == "OPTIONS":
         return "", 204
 
-    # Always return this shape on GET
+    # GET request – used for form checks
     if request.method == "GET":
         return jsonify({
             "answer": "TDS Virtual TA is running. Send a POST with {'question': '...'} to get answers.",
             "links": [
                 {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
-                {"text": "Discourse",     "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
+                {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
             ]
         })
 
-    # POST handling
+    # POST request – real Q&A
     data = request.get_json() or {}
     question = data.get("question", "").strip()
 
-    # If no question provided, still return 200 with valid shape
     if not question:
         return jsonify({
             "answer": "Please provide a question in the request body.",
             "links": [
                 {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
-                {"text": "Discourse",     "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
+                {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
             ]
         })
 
-    # Attempt real OpenAI call, fallback to placeholder on any error
     try:
+        # OpenAI chat call with course context
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are a helpful TA for IITM's Tools in Data Science course. Answer using only the provided context."},
-                {"role": "user",   "content": f"Context:\n{context_text}\n\nQuestion: {question}"}
+                {
+                    "role": "system",
+                    "content": "You are a helpful TA for IITM's Tools in Data Science course. Use only the provided context to answer."
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context_text}\n\nQuestion: {question}"
+                }
             ]
         )
         answer = response.choices[0].message.content.strip()
-    except Exception:
-        answer = f"You asked: {question}"
+
+    except Exception as e:
+        # Fallback if OpenAI fails
+        answer = f"Could not get answer from OpenAI. (Error: {str(e)})"
 
     return jsonify({
         "answer": answer,
         "links": [
             {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
-            {"text": "Discourse",     "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
+            {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
         ]
     })
 

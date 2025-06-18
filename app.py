@@ -15,7 +15,8 @@ with open("context.json", "r", encoding="utf-8") as f:
     context_data = json.load(f)
 
 course_text = context_data.get("course_text", "")
-discourse = context_data.get("discourse", "")
+discourse_list = context_data.get("discourse", [])
+discourse = "\n".join(discourse_list) if isinstance(discourse_list, list) else discourse_list
 
 def extract_relevant_passages(question, full_text, max_chars=4000):
     keywords = [w.lower() for w in re.findall(r'\w+', question) if len(w) > 3]

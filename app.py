@@ -1,79 +1,88 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from openai import OpenAI
-import os
+import openai
 import json
-import re
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Load your OpenAI API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Load context from JSON
+# Load the context.json file
 with open("context.json", "r", encoding="utf-8") as f:
     context_data = json.load(f)
 
 course_text = context_data.get("course_text", "")
-discourse_list = context_data.get("discourse", [])
-discourse = "\n".join(discourse_list) if isinstance(discourse_list, list) else discourse_list
 
-def extract_relevant_passages(question, full_text, max_chars=4000):
-    keywords = [w.lower() for w in re.findall(r'\w+', question) if len(w) > 3]
-    lines = full_text.splitlines()
-    matched = [line for line in lines if any(kw in line.lower() for kw in keywords)]
-    # join and trim
-    return "\n".join(matched)[:max_chars] if matched else full_text[:max_chars]
+# Process discourse content safely
+discourse_list = context_data.get("discourse", [])
+if isinstance(discourse_list, list) and isinstance(discourse_list[0], dict):
+    discourse_text = "\n".join([item.get("text", "") for item in discourse_list])
+else:
+    discourse_text = "\n".join(discourse_list) if isinstance(discourse_list, list) else discourse_list
+
+discourse_links = [
+    {"url": item.get("url", ""), "text": item.get("text", "")}
+    for item in discourse_list if isinstance(item, dict)
+]
 
 @app.route("/")
 def home():
-    return "TDS Virtual TA API is live. Use /api/ endpoint to POST questions."
+    return "App is live. Use /api/ to POST questions."
 
 @app.route("/api/", methods=["POST"])
-def answer():
+def answer_question():
     try:
         data = request.get_json()
         question = data.get("question", "").strip()
 
         if not question:
-            return jsonify({"error": "Missing question field"}), 400
+            return jsonify({"answer": "No question provided.", "links": []}), 400
 
-        # Reduce context dynamically
-        course_snippet = extract_relevant_passages(question, course_text)
-        discourse_snippet = extract_relevant_passages(question, discourse)
+        # Combine prompt context
+        prompt = f"""
+You are a helpful assistant for the IITM Online BS degree program.
+Answer the student's question based ONLY on the following Tools in Data Science course content and forum discussions.
+Provide relevant links if available, otherwise say "no link available".
 
-        system_msg = (
-            "You are a helpful assistant for the Tools in Data Science course at IIT Madras. "
-            "Answer the student's question based on the context below. If there's not enough info, say so.\n\n"
-            f"Course Content:\n{course_snippet}\n\nDiscourse:\n{discourse_snippet}"
+Course content:
+{course_text[:8000]}
+
+Forum discussions:
+{discourse_text[:8000]}
+
+Question: {question}
+Answer:"""
+
+        # Send to OpenAI (gpt-3.5 or gpt-4o)
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-0125",  # or "gpt-4o"
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
         )
 
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": question}
-            ],
-            temperature=0.2,
-        )
+        reply = response["choices"][0]["message"]["content"]
 
-        answer_text = response.choices[0].message.content.strip()
-
-        links = [
-            {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
-            {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
-        ]
+        # Find matching links from discourse if keywords are mentioned
+        matched_links = []
+        for item in discourse_links:
+            if any(word.lower() in reply.lower() for word in item["text"].split()):
+                matched_links.append(item)
+            if len(matched_links) >= 5:
+                break
 
         return jsonify({
-            "answer": answer_text,
-            "links": links
+            "answer": reply.strip(),
+            "links": matched_links
         })
 
     except Exception as e:
         return jsonify({
-            "answer": f"Could not get answer from OpenAI. (Error: {e})",
+            "answer": f"Could not get answer from OpenAI. (Error: {str(e)})",
             "links": []
-        })
+        }), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)

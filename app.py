@@ -1,87 +1,66 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
-import json
+from openai import OpenAI
 import os
-import re
-
-# Load OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import json
 
 app = Flask(__name__)
 CORS(app)
 
-# Load context.json once at startup
-with open("context.json", "r", encoding="utf-8") as f:
-    context_data = json.load(f)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-course_text = context_data.get("course_text", "")
-discourse_entries = context_data.get("discourse", [])
+# Load context from JSON file
+with open("context.json", "r", encoding="utf-8") as f:
+    CONTEXT = json.load(f)
 
 @app.route("/")
 def home():
-    return "TDS Virtual TA API is live. Use POST /api/ to ask questions."
+    return "TDS Virtual TA API is live. Use /api/ endpoint to POST questions."
 
 @app.route("/api/", methods=["POST"])
 def answer():
     try:
         data = request.get_json()
-        question = data.get("question", "")
+        question = data.get("question", "").strip()
 
         if not question:
-            return jsonify({"answer": "No question provided", "links": []}), 400
+            return jsonify({"error": "Missing question field"}), 400
 
-        # Tokenize the question
-        question_words = re.findall(r"\w+", question.lower())
-
-        # Match relevant discourse posts
-        context_parts = [course_text[:3000]]  # Include first part of course content
-        used_urls = set()
-
-        for post in discourse_entries:
-            text = post.get("text", "")
-            url = post.get("url", "")
-            score = sum(word in text.lower() for word in question_words)
-            if score >= 2:  # Use this post if 2+ keywords match
-                context_parts.append(f"{text}\n(Source: {url})")
-                used_urls.add((url, text[:100] + "..."))
-
-        final_context = "\n\n".join(context_parts)
-
-        # Build the prompt
+        # Build system message for grounding
         system_msg = (
-            "You are a helpful teaching assistant for the Tools in Data Science course. "
-            "Answer the student's question using the context below. If the answer comes from a particular page, be specific and include it.\n\n"
-            f"Context:\n{final_context}"
+            "You are a helpful assistant for the Tools in Data Science course at IIT Madras. "
+            "Answer the student's question using the context below. If the context is insufficient, say so.\n\n"
+            f"Context:\n{CONTEXT['course_text']}\n\n{CONTEXT['discourse']}"
         )
 
-        messages = [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": question}
-        ]
-
-        # Call OpenAI API
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-0125",
-            messages=messages,
+        # OpenAI chat completion (new SDK)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo-0125",  # or gpt-4o, if preferred
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": question}
+            ],
             temperature=0.2,
         )
 
-        answer_text = response["choices"][0]["message"]["content"]
+        answer_text = response.choices[0].message.content.strip()
 
-        # Build the links list for final response
-        links_used = [{"url": url, "text": text} for url, text in used_urls]
+        # Include useful links (static for now)
+        links = [
+            {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
+            {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"}
+        ]
 
         return jsonify({
             "answer": answer_text,
-            "links": links_used
+            "links": links
         })
 
     except Exception as e:
         return jsonify({
             "answer": f"Could not get answer from OpenAI. (Error: {e})",
             "links": []
-        }), 200
+        })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)

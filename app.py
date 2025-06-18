@@ -15,7 +15,6 @@ with open("context.json", "r", encoding="utf-8") as f:
 FALLBACK_COURSE_URL = "https://tds.s-anand.net/#/2025-01/"
 FALLBACK_DISCOURSE_URL = "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"
 
-# Set up OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 @app.route("/")
@@ -31,14 +30,14 @@ def api():
         if not question:
             return jsonify({"error": "Missing 'question' in request"}), 400
 
-        # Prepare context text for LLM
+        # Prepare context
         all_chunks = [entry["text"] for entry in CONTEXT_ENTRIES]
         full_context = "\n\n".join(all_chunks)
         if len(full_context) > 12000:
             full_context = full_context[:12000]
 
-        # Ask OpenAI
-        completion = client.chat.completions.create(
+        # OpenAI API call
+        chat_response = client.chat.completions.create(
             model="gpt-3.5-turbo-0125",
             messages=[
                 {
@@ -50,12 +49,13 @@ def api():
                     "content": f"Context:\n{full_context}\n\nQuestion: {question}"
                 }
             ],
-            temperature=0.2,
+            temperature=0.2
         )
 
-        answer = completion.choices[0].message.content.strip()
+        # ✅ Correct access of response message in openai>=1.0.0
+        answer = chat_response.choices[0].message.content.strip()
 
-        # Extract relevant links from context
+        # Build links based on matches
         matched_links = []
         seen_urls = set()
         question_words = set(question.lower().split())

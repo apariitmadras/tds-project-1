@@ -30,19 +30,19 @@ def api():
         if not question:
             return jsonify({"error": "Missing 'question' in request"}), 400
 
-        # Prepare context
+        # Prepare context (truncate if needed)
         all_chunks = [entry["text"] for entry in CONTEXT_ENTRIES]
         full_context = "\n\n".join(all_chunks)
         if len(full_context) > 12000:
             full_context = full_context[:12000]
 
-        # OpenAI API call
-        chat_response = client.chat.completions.create(
+        # OpenAI chat completion (OpenAI v1.x)
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo-0125",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a helpful assistant answering questions based only on the course and Discourse content provided."
+                    "content": "You are a helpful assistant answering questions based only on the provided course and Discourse content."
                 },
                 {
                     "role": "user",
@@ -52,10 +52,10 @@ def api():
             temperature=0.2
         )
 
-        # ✅ Correct access of response message in openai>=1.0.0
-        answer = chat_response.choices[0].message.content.strip()
+        # ✅ Correctly extract message content
+        answer = response.choices[0].message.content.strip()
 
-        # Build links based on matches
+        # Match links from context
         matched_links = []
         seen_urls = set()
         question_words = set(question.lower().split())
@@ -63,7 +63,7 @@ def api():
         for entry in CONTEXT_ENTRIES:
             if any(word in entry["text"].lower() for word in question_words):
                 if entry["url"] not in seen_urls:
-                    snippet = " ".join(entry["text"].split())[:200]
+                    snippet = entry["text"].strip().replace("\n", " ")[:200]
                     matched_links.append({"text": snippet, "url": entry["url"]})
                     seen_urls.add(entry["url"])
             if len(matched_links) >= 5:

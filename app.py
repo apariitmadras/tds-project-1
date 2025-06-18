@@ -1,88 +1,84 @@
+import os
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
-import json
-import os
+from openai import OpenAI
 
+# Setup
 app = Flask(__name__)
 CORS(app)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Load your OpenAI API key from environment
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Load the context.json file
+# Load context from context.json
 with open("context.json", "r", encoding="utf-8") as f:
     context_data = json.load(f)
 
+# Prepare context text
 course_text = context_data.get("course_text", "")
+discourse_data = context_data.get("discourse", [])
 
-# Process discourse content safely
-discourse_list = context_data.get("discourse", [])
-if isinstance(discourse_list, list) and isinstance(discourse_list[0], dict):
-    discourse_text = "\n".join([item.get("text", "") for item in discourse_list])
+# Join discourse text if it's a list of dicts
+if isinstance(discourse_data, list):
+    discourse_text = "\n\n".join(item.get("text", "") for item in discourse_data)
 else:
-    discourse_text = "\n".join(discourse_list) if isinstance(discourse_list, list) else discourse_list
+    discourse_text = discourse_data
 
-discourse_links = [
-    {"url": item.get("url", ""), "text": item.get("text", "")}
-    for item in discourse_list if isinstance(item, dict)
+# Combine both sources
+combined_context = course_text + "\n\n" + discourse_text
+
+# Link mapping for response
+source_links = [
+    {"text": "Course content", "url": "https://tds.s-anand.net/#/2025-01/"},
+    {"text": "Discourse", "url": "https://discourse.onlinedegree.iitm.ac.in/c/courses/tds-kb/34"},
 ]
 
 @app.route("/")
 def home():
-    return "App is live. Use /api/ to POST questions."
+    return "TDS Virtual TA API is live. Use the `/api/` endpoint."
 
 @app.route("/api/", methods=["POST"])
-def answer_question():
+def api():
     try:
         data = request.get_json()
-        question = data.get("question", "").strip()
+        question = data.get("question", "")
 
-        if not question:
-            return jsonify({"answer": "No question provided.", "links": []}), 400
+        if not question.strip():
+            return jsonify({"answer": "Please provide a valid question.", "links": []}), 400
 
-        # Combine prompt context
-        prompt = f"""
-You are a helpful assistant for the IITM Online BS degree program.
-Answer the student's question based ONLY on the following Tools in Data Science course content and forum discussions.
-Provide relevant links if available, otherwise say "no link available".
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a helpful teaching assistant for the Tools in Data Science (TDS) course at IIT Madras. "
+                    "Answer questions using the provided context from the course page and Discourse forum. "
+                    "Give specific, helpful, and concise answers."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"{combined_context}\n\nQuestion: {question}"
+            }
+        ]
 
-Course content:
-{course_text[:8000]}
-
-Forum discussions:
-{discourse_text[:8000]}
-
-Question: {question}
-Answer:"""
-
-        # Send to OpenAI (gpt-3.5 or gpt-4o)
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo-0125",  # or "gpt-4o"
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
+        # Make OpenAI API call
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.5,
         )
 
-        reply = response["choices"][0]["message"]["content"]
-
-        # Find matching links from discourse if keywords are mentioned
-        matched_links = []
-        for item in discourse_links:
-            if any(word.lower() in reply.lower() for word in item["text"].split()):
-                matched_links.append(item)
-            if len(matched_links) >= 5:
-                break
+        answer_text = response.choices[0].message.content.strip()
 
         return jsonify({
-            "answer": reply.strip(),
-            "links": matched_links
+            "answer": answer_text,
+            "links": source_links
         })
 
     except Exception as e:
         return jsonify({
             "answer": f"Could not get answer from OpenAI. (Error: {str(e)})",
             "links": []
-        }), 200
+        })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)

@@ -4,6 +4,7 @@ import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
+import re
 
 app = Flask(__name__)
 CORS(app)
@@ -27,7 +28,6 @@ if isinstance(raw, dict):
         })
     # then append each discourse entry
     for item in raw.get("discourse", []):
-        # ensure it has both keys
         if "text" in item and "url" in item:
             CONTEXT_ENTRIES.append(item)
 else:
@@ -72,13 +72,16 @@ def api():
         )
         answer = resp.choices[0].message.content.strip()
 
+        # extract only “real” keywords (>3 chars) from the question
+        keywords = set(w for w in re.findall(r"\w+", question.lower()) if len(w) > 3)
+
         # pick up to 5 matching source links
         seen = set()
-        words = set(question.lower().split())
         links = []
         for entry in CONTEXT_ENTRIES:
             txt = entry["text"].lower()
-            if any(w in txt for w in words):
+            # match only if at least one real keyword appears in the entry
+            if any(kw in txt for kw in keywords):
                 url = entry["url"]
                 if url not in seen:
                     snippet = entry["text"].replace("\n", " ")[:200]
@@ -97,7 +100,6 @@ def api():
         return jsonify({"answer": answer, "links": links})
 
     except Exception as e:
-        # debug in logs
         traceback.print_exc()
         return jsonify({
             "answer": f"Could not get answer from OpenAI. (Error: {str(e)})",

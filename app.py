@@ -4,7 +4,6 @@ import traceback
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-import re
 
 app = Flask(__name__)
 CORS(app)
@@ -37,14 +36,23 @@ else:
 # initialize OpenAI client (v1.x)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+
 @app.route("/")
 def home():
-    return "App is live. Send POST to /api/ with JSON {question: ...}."
+    return "App is live. Send POST to /api/ with JSON {\"question\": \"…\"}."
 
-@app.route("/api/", methods=["POST"])
+
+@app.route("/api/", methods=["GET", "POST"])
 def api():
+    if request.method == "GET":
+        # provide a simple usage hint on GET
+        return jsonify({
+            "message": "Submit your question via POST JSON: {\"question\": \"…\"}"
+        })
+
+    # POST handling
     try:
-        data = request.get_json()
+        data = request.get_json(force=True)
         question = data.get("question", "").strip()
         if not question:
             return jsonify({"error": "Missing 'question' in request"}), 400
@@ -72,16 +80,13 @@ def api():
         )
         answer = resp.choices[0].message.content.strip()
 
-        # extract only “real” keywords (>3 chars) from the question
-        keywords = set(w for w in re.findall(r"\w+", question.lower()) if len(w) > 3)
-
         # pick up to 5 matching source links
         seen = set()
+        words = set(question.lower().split())
         links = []
         for entry in CONTEXT_ENTRIES:
             txt = entry["text"].lower()
-            # match only if at least one real keyword appears in the entry
-            if any(kw in txt for kw in keywords):
+            if any(w in txt for w in words):
                 url = entry["url"]
                 if url not in seen:
                     snippet = entry["text"].replace("\n", " ")[:200]
@@ -105,6 +110,7 @@ def api():
             "answer": f"Could not get answer from OpenAI. (Error: {str(e)})",
             "links": []
         }), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=3000)
